@@ -1,0 +1,452 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Krenko Math">
+    <meta name="theme-color" content="#121212">
+    <title>Krenko's Horde</title>
+
+    <link rel="apple-touch-icon" id="appleIcon" href="">
+    <link rel="icon" id="favIcon" href="">
+
+    <style>
+        :root {
+            --goblin-red: #D32F2F;
+            --dark-bg: #121212;
+            --panel-bg: #1E1E1E;
+            --text-color: #E0E0E0;
+            --accent: #FF5252;
+            --modal-bg: rgba(0, 0, 0, 0.95);
+            --safe-top: env(safe-area-inset-top);
+            --safe-bottom: env(safe-area-inset-bottom);
+            --safe-left: env(safe-area-inset-left);
+            --safe-right: env(safe-area-inset-right);
+        }
+
+        * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: var(--dark-bg);
+            color: var(--text-color);
+            margin: 0;
+            height: 100vh;
+            width: 100vw;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* --- LAYOUT --- */
+        #app-container {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            padding: var(--safe-top) var(--safe-right) var(--safe-bottom) var(--safe-left);
+            height: 100%;
+            width: 100%;
+        }
+
+        h1 {
+            color: var(--accent);
+            margin: 10px 0;
+            font-size: 1.2rem;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            text-align: center;
+            flex-shrink: 0;
+            text-shadow: 0 2px 4px black;
+        }
+
+        /* --- CARD AREA --- */
+        .card-area {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 10px;
+            width: 100%;
+        }
+
+        .card-row {
+            display: flex;
+            width: 100%;
+            height: 100%;
+            /* Use a larger gap to prevent accidental touching */
+            gap: 12px;
+            align-items: center;
+            justify-content: center;
+        }
+
+        /* --- LANDSCAPE OPTIMIZATION --- */
+        @media (orientation: landscape) {
+            #app-container { flex-direction: row; }
+            h1 { position: absolute; top: 10px; left: 20px; font-size: 1rem; margin: 0; z-index: 5; }
+            .card-area { flex: 2; height: 100%; padding-top: 30px; }
+            .controls-area { flex: 1; height: 100%; border-top: none; border-left: 1px solid #333; justify-content: center; max-width: 300px; }
+        }
+
+        /* --- TOKEN WRAPPERS --- */
+        .token-wrapper {
+            flex: 1;
+            height: 100%;
+            max-height: 100%;
+            display: none;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            transition: flex 0.3s ease; /* Smooth size adjustment */
+            z-index: 1; /* Default layer */
+        }
+
+        .token-wrapper.visible { display: flex; }
+
+        /* The Box that holds the image aspect ratio */
+        .card-inner {
+            position: relative;
+            width: 100%;
+            aspect-ratio: 5 / 7;
+            max-height: 100%;
+            /* Ensures no overflow from this container affects layout */
+            transform-style: preserve-3d;
+            container-type: inline-size;
+        }
+
+        .goblin-card {
+            width: 100%;
+            height: 100%;
+            border-radius: 12px;
+            object-fit: cover;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.6);
+            border: 2px solid #000;
+            transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1); /* Bouncy transition */
+            background-color: #222; /* Fallback color */
+        }
+
+        /* STATES */
+        .token-wrapper.untapped .goblin-card {
+            border-color: var(--goblin-red);
+            cursor: pointer;
+        }
+        .token-wrapper.untapped:active .goblin-card { transform: scale(0.96); }
+
+        .token-wrapper.sick .goblin-card {
+            filter: grayscale(100%) brightness(0.6);
+            border-color: #555;
+        }
+
+        /* --- TAPPED STATE (SUBTLE & SAFE) --- */
+        .token-wrapper.tapped {
+            flex: 1;
+        }
+
+        .token-wrapper.tapped .goblin-card {
+            /* Rotate 30deg.
+               Scale 0.85: This shrinks the card slightly so the rotated corners
+               don't stick out and overlap the neighbor cards.
+            */
+            transform: rotate(30deg) scale(0.85);
+            filter: brightness(0.8);
+            border-color: #888;
+            cursor: pointer;
+            box-shadow: 5px 10px 10px rgba(0,0,0,0.4);
+        }
+
+        .token-wrapper.tapped:active .goblin-card {
+            transform: rotate(30deg) scale(0.82);
+        }
+
+        /* OVERLAYS */
+        .overlay-count {
+            position: absolute; top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 15cqw; font-weight: 800; color: white;
+            text-shadow: 0 0 5px black, 0 0 10px black;
+            pointer-events: none; z-index: 10;
+        }
+        @supports not (font-size: 15cqw) { .overlay-count { font-size: 2.5rem; } }
+
+        .overlay-label {
+            position: absolute; bottom: 0; left: 0; right: 0;
+            text-align: center; background: rgba(0,0,0,0.8); color: white;
+            font-size: 0.8rem; padding: 4px 0; font-weight: bold;
+            text-transform: uppercase; border-radius: 0 0 10px 10px; z-index: 10;
+        }
+
+        .sick-icon { position: absolute; top: 5%; right: 5%; font-size: 1.5rem; z-index: 10; text-shadow: 0 2px 4px black; }
+
+        /* --- CONTROLS AREA --- */
+        .controls-area {
+            flex-shrink: 0;
+            padding: 15px;
+            background: rgba(30, 30, 30, 0.5);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border-top: 1px solid #333;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            z-index: 20;
+        }
+
+        .manual-input {
+            background: #111; padding: 8px 12px; border-radius: 8px;
+            display: flex; justify-content: space-between; align-items: center;
+            border: 1px solid #333;
+        }
+        .manual-input label { color: #aaa; font-weight: bold; font-size: 0.8rem; line-height: 1.2; }
+        .manual-input input {
+            width: 50px; background: #222; border: 1px solid #444;
+            color: white; font-size: 1.1rem; padding: 6px;
+            border-radius: 6px; text-align: center;
+        }
+
+        button {
+            border: none; border-radius: 8px; padding: 12px;
+            font-size: 1.1rem; font-weight: bold; text-transform: uppercase;
+            cursor: pointer; color: white; width: 100%;
+            transition: transform 0.1s;
+        }
+
+        .btn-krenko {
+            background-color: var(--goblin-red);
+            box-shadow: 0 4px 0 #8e0000;
+            padding: 20px 12px;
+            font-size: 1.3rem;
+        }
+        .btn-pass { background-color: #333; box-shadow: 0 4px 0 #111; font-size: 0.9rem; }
+        button:active { transform: translateY(3px); box-shadow: none !important; }
+
+        /* --- MODAL --- */
+        .modal-overlay {
+            position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+            background: var(--modal-bg); z-index: 1000;
+            display: flex; align-items: flex-end; justify-content: center;
+            opacity: 0; pointer-events: none; transition: opacity 0.2s;
+        }
+        .modal-overlay.open { opacity: 1; pointer-events: auto; }
+        .modal-content {
+            background: #222; width: 100%; max-width: 500px;
+            border-radius: 20px 20px 0 0; padding: 25px; padding-bottom: max(25px, var(--safe-bottom));
+            transform: translateY(100%); transition: transform 0.3s cubic-bezier(0.19, 1, 0.22, 1);
+        }
+        .modal-overlay.open .modal-content { transform: translateY(0); }
+        .modal-header { font-size: 1.2rem; font-weight: bold; margin-bottom: 20px; text-align: center; }
+        .tap-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 15px; }
+        .btn-tap { background: #333; padding: 15px; border: 1px solid #444; box-shadow: none; }
+        .btn-tap:active { background: var(--goblin-red); }
+        .custom-row { display: flex; gap: 10px; }
+        .custom-input { flex: 1; padding: 10px; background: #111; border: 1px solid #444; color: white; font-size: 1.2rem; border-radius: 8px; text-align: center; }
+        .btn-close { background: transparent; color: #888; margin-top: 15px; font-size: 0.9rem; padding: 10px; width: 100%; box-shadow: none; }
+
+        /* FLOATER */
+        .floater {
+            position: fixed; color: var(--accent); font-weight: bold; font-size: 2rem;
+            pointer-events: none; animation: floatUp 1.5s ease-out forwards;
+            z-index: 2000; text-shadow: 0 2px 4px black;
+        }
+        @keyframes floatUp {
+            0% { opacity: 1; transform: translateY(0) scale(0.5); }
+            50% { transform: translateY(-50px) scale(1.2); }
+            100% { opacity: 0; transform: translateY(-100px) scale(1); }
+        }
+    </style>
+</head>
+<body>
+
+    <div id="app-container">
+        <h1>Krenko's Horde</h1>
+
+        <div class="card-area">
+            <div class="card-row">
+                <div class="token-wrapper untapped" id="untappedWrapper" onclick="openModal('tap')">
+                    <div class="card-inner">
+                        <img src="" class="goblin-card art-target">
+                        <div class="overlay-count" id="untappedCount">0</div>
+                        <div class="overlay-label">Ready</div>
+                    </div>
+                </div>
+
+                <div class="token-wrapper tapped" id="tappedWrapper" onclick="openModal('untap')">
+                    <div class="card-inner">
+                        <img src="" class="goblin-card art-target">
+                        <div class="overlay-count" id="tappedCount">0</div>
+                        <div class="overlay-label">Tapped</div>
+                    </div>
+                </div>
+
+                <div class="token-wrapper sick" id="sickWrapper">
+                    <div class="card-inner">
+                        <img src="" class="goblin-card art-target">
+                        <div class="sick-icon">💤</div>
+                        <div class="overlay-count" id="sickCount">0</div>
+                        <div class="overlay-label">Sick</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="controls-area">
+            <div class="manual-input">
+                <label>Physical Goblins<br>(Inc. Krenko)</label>
+                <input type="number" id="physicalCount" value="1" min="0">
+            </div>
+            <button class="btn-krenko" onclick="tapKrenko(event)">Tap Krenko! ↷</button>
+            <button class="btn-pass" onclick="passTurn()">Pass Turn ↺</button>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="actionModal" onclick="closeModal(event)">
+        <div class="modal-content">
+            <div class="modal-header" id="modalTitle">Modify Tokens</div>
+            <div class="tap-grid">
+                <button class="btn-tap" onclick="modifyTokens(1)">One</button>
+                <button class="btn-tap" onclick="modifyTokens('all')">All</button>
+            </div>
+            <div class="custom-row">
+                <input type="number" id="customInput" class="custom-input" placeholder="Custom #">
+                <button class="btn-tap" style="flex:1;" onclick="modifyCustom()">Go</button>
+            </div>
+            <button class="btn-close" onclick="closeModal(null, true)">Close</button>
+        </div>
+    </div>
+
+    <script>
+        // --- ASSETS GENERATION ---
+        (function generateAssets() {
+            const canvas = document.createElement('canvas');
+            canvas.width = 192; canvas.height = 192;
+            const ctx = canvas.getContext('2d');
+            ctx.fillStyle = '#D32F2F';
+            ctx.fillRect(0,0,192,192);
+            ctx.fillStyle = '#FFFFFF';
+            ctx.font = 'bold 120px sans-serif';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText('K', 96, 100);
+
+            const iconUrl = canvas.toDataURL('image/png');
+            document.getElementById('appleIcon').href = iconUrl;
+            document.getElementById('favIcon').href = iconUrl;
+
+            const manifest = {
+                name: "Krenko Math",
+                short_name: "Krenko",
+                start_url: ".",
+                display: "standalone",
+                background_color: "#121212",
+                theme_color: "#121212",
+                icons: [{ src: iconUrl, sizes: "192x192", type: "image/png" }]
+            };
+            const stringManifest = JSON.stringify(manifest);
+            const blob = new Blob([stringManifest], {type: 'application/json'});
+            const manifestURL = URL.createObjectURL(blob);
+            const link = document.createElement('link');
+            link.rel = 'manifest';
+            link.href = manifestURL;
+            document.head.appendChild(link);
+        })();
+
+        // --- LOGIC ---
+        let state = { untapped: 0, tapped: 0, sick: 0, imageLoaded: false };
+        let currentMode = 'tap';
+        const scryfallUrl = 'https://api.scryfall.com/cards/search?q=!"Goblin"+t:token+c:r+unique:art';
+
+        async function loadGoblinArt() {
+            if (state.imageLoaded) return;
+            try {
+                const response = await fetch(scryfallUrl);
+                const data = await response.json();
+                if (data.data && data.data.length > 0) {
+                    const randomIndex = Math.floor(Math.random() * data.data.length);
+                    const card = data.data[randomIndex];
+                    const imgUrl = card.image_uris ? card.image_uris.large : card.card_faces[0].image_uris.large;
+                    document.querySelectorAll('.art-target').forEach(img => img.src = imgUrl);
+                    document.getElementById('untappedWrapper').classList.add('visible');
+                    document.getElementById('sickWrapper').classList.add('visible');
+                    state.imageLoaded = true;
+                }
+            } catch (e) { console.error("Art fetch failed", e); }
+        }
+
+        function tapKrenko(e) {
+            loadGoblinArt();
+            const physical = parseInt(document.getElementById('physicalCount').value) || 0;
+            const total = physical + state.untapped + state.tapped + state.sick;
+            state.sick += total;
+            updateDisplay();
+            spawnFloater(e, `+${total}`);
+            vibrate([30, 30, 30]);
+        }
+
+        function passTurn() {
+            state.untapped += state.sick;
+            state.sick = 0;
+            state.untapped += state.tapped;
+            state.tapped = 0;
+            updateDisplay();
+            vibrate(50);
+        }
+
+        function openModal(mode) {
+            currentMode = mode;
+            if (mode === 'tap' && state.untapped <= 0) return;
+            if (mode === 'untap' && state.tapped <= 0) return;
+            const title = mode === 'tap' ? "Tap How Many?" : "Untap How Many?";
+            document.getElementById('modalTitle').innerText = title;
+            document.getElementById('actionModal').classList.add('open');
+            document.getElementById('customInput').value = "";
+        }
+
+        function closeModal(e, force=false) {
+            if (force || e.target.classList.contains('modal-overlay')) {
+                document.getElementById('actionModal').classList.remove('open');
+            }
+        }
+
+        function modifyTokens(amount) {
+            let max = currentMode === 'tap' ? state.untapped : state.tapped;
+            let val = (amount === 'all') ? max : amount;
+            if (val > max) val = max;
+            if (currentMode === 'tap') { state.untapped -= val; state.tapped += val; }
+            else { state.tapped -= val; state.untapped += val; }
+            updateDisplay();
+            vibrate(20);
+            if (amount === 'all' || (currentMode === 'tap' && state.untapped === 0) || (currentMode === 'untap' && state.tapped === 0)) {
+                closeModal(null, true);
+            }
+        }
+
+        function modifyCustom() {
+            const val = parseInt(document.getElementById('customInput').value);
+            if (val && val > 0) modifyTokens(val);
+        }
+
+        function updateDisplay() {
+            document.getElementById('untappedCount').innerText = state.untapped;
+            document.getElementById('tappedCount').innerText = state.tapped;
+            document.getElementById('sickCount').innerText = state.sick;
+            const tappedWrapper = document.getElementById('tappedWrapper');
+            if (state.tapped > 0) tappedWrapper.classList.add('visible');
+            else tappedWrapper.classList.remove('visible');
+        }
+
+        function spawnFloater(event, text) {
+            const el = document.createElement('div');
+            el.classList.add('floater');
+            el.innerText = text;
+            let x = window.innerWidth / 2;
+            let y = window.innerHeight / 2;
+            if(event && event.clientX) { x = event.clientX; y = event.clientY; }
+            el.style.left = `${x}px`; el.style.top = `${y}px`;
+            document.body.appendChild(el);
+            setTimeout(() => el.remove(), 1500);
+        }
+
+        function vibrate(pattern) { if (navigator.vibrate) navigator.vibrate(pattern); }
+    </script>
+</body>
+</html>
